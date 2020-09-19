@@ -7,7 +7,7 @@ var _      = require('underscore');
 var Q      = require('q');
 var argv   = require('minimist')(process.argv.slice(2));
 
-var sourceIconSize;
+var sourceIconSizes = {};
 
 /**
  * @var {Object} settings - names of the config file and of the icon image
@@ -220,11 +220,7 @@ var getProjectName = function () {
  */
 var generateIcon = function (platform, icon) {
   var deferred = Q.defer();
-  var srcPath = settings.ICON_FILE;
-  var platformPath = srcPath.replace(/\.png$/, '-' + platform.name + '.png');
-  if (fs.existsSync(platformPath)) {
-    srcPath = platformPath;
-  }
+  var srcPath = platform.iconFile;
   var dstPath = platform.iconsPath + icon.name;
   var dst = path.dirname(dstPath);
   if (!fs.existsSync(dst)) {
@@ -233,7 +229,7 @@ var generateIcon = function (platform, icon) {
 
   // There is some kind of issue in imagemagick where
   // resizing to same size is making the png 10x larger in byte size.
-  if (icon.size === sourceIconSize) {
+  if (icon.size === platform.iconSize) {
     fs.copySync(srcPath, dstPath);
     deferred.resolve();
     display.success(icon.name + ' copied');
@@ -282,7 +278,7 @@ var generateIcon = function (platform, icon) {
  * @return {Promise}
  */
 var generateIconsForPlatform = function (platform) {
-  display.header('Generating Icons for ' + platform.name);
+  display.header('Generating Icons for ' + platform.name + ' from ' + platform.iconFile);
   var all = [];
   var icons = platform.icons;
   icons.forEach(function (icon) {
@@ -309,6 +305,28 @@ var generateIcons = function (platforms) {
   });
   Q.all(all).then(function () {
     deferred.resolve();
+  });
+  return deferred.promise;
+};
+
+/**
+ * Goes over all the platforms and identifies the icon to use for each platform
+ *
+ * @param  {Array} platforms
+ * @return {Promise}
+ */
+var identifyIconFiles = function (platforms) {
+  var deferred = Q.defer();
+  var sequence = Q();
+  var all = [];
+  _(platforms).where({ isAdded : true }).forEach(function (platform) {
+    sequence = sequence.then(function () {
+      return identifyPlatformIcon(platform);
+    });
+    all.push(sequence);
+  });
+  Q.all(all).then(function () {
+    deferred.resolve(platforms);
   });
   return deferred.promise;
 };
@@ -374,19 +392,31 @@ var configFileExists = function () {
 };
 
 /**
- * Get source icon size
+ * Identify which icon will be used for a platform and get its size
+ * UPDATES the platform object with the iconFile and iconSize properties
  *
  * @return {Promise} resolves if no error reading it
  */
-var getSourceIconSize = function () {
+var identifyPlatformIcon = function (platform) {
+  platform.iconFile = settings.ICON_FILE;
+  var platformPath = platform.iconFile.replace(/\.png$/, '-' + platform.name + '.png');
+  if (fs.existsSync(platformPath)) {
+    platform.iconFile = platformPath;
+  }
   var deferred = Q.defer();
-  ig.identify(settings.ICON_FILE, function (err, info) {
+  if (sourceIconSizes[platform.iconFile]) {
+    platform.iconSize = sourceIconSizes[platform.iconFile];
+    deferred.resolve();
+    return deferred.promise;
+  }
+  ig.identify(platform.iconFile, function (err, info) {
     if (err) {
-      display.error('cannot determine size of' + settings.ICON_FILE);
+      display.error('cannot determine size of' + platform.iconFile + ' - ' + err);
       deferred.reject();
     } else {
-      display.success(settings.ICON_FILE + ' info: ' + info);
-      sourceIconSize = info.width;
+      display.success(platform.iconFile + ' size: ' + info.width + 'x' + info.height);
+      platform.iconSize = info.width;
+      sourceIconSizes[platform.iconFile] = info.width; // cache it
       deferred.resolve();
     }
   });
@@ -397,10 +427,10 @@ display.header('Checking Project & Icon');
 
 atLeastOnePlatformFound()
   .then(validIconExists)
-  .then(getSourceIconSize)
   .then(configFileExists)
   .then(getProjectName)
   .then(getPlatforms)
+  .then(identifyIconFiles)
   .then(generateIcons)
   .catch(function (err) {
     if (err) {
