@@ -36,7 +36,7 @@ var getPlatforms = function (projectName) {
     platforms.push({
       name : 'ios',
       // TODO: use async fs.exists
-      isAdded : fs.existsSync('platforms/ios'),
+      isAdded : fs.existsSync(settings.ICONS_PATH || 'platforms/ios'),
       iconsPath : (settings.ICONS_PATH || 'platforms/ios/' + projectName + (xcodeFolder)),
       icons : [
         { name: 'icon-20.png',             size : 20   },
@@ -69,7 +69,7 @@ var getPlatforms = function (projectName) {
   if (settings.PLATFORMS.indexOf('android')!==-1) {
     platforms.push({
       name : 'android',
-      isAdded : fs.existsSync('platforms/android'),
+      isAdded : fs.existsSync(settings.ICONS_PATH || 'platforms/android'),
       iconsPath : (settings.ICONS_PATH || ('platforms/android/app/src/main/res/')),
       icons : [
         { name : 'drawable/icon.png',       size : 96 },
@@ -92,7 +92,7 @@ var getPlatforms = function (projectName) {
     platforms.push({
       name : 'osx',
       // TODO: use async fs.exists
-      isAdded : fs.existsSync('platforms/osx'),
+      isAdded : fs.existsSync(settings.ICONS_PATH || 'platforms/osx'),
       iconsPath : (settings.ICONS_PATH || ('platforms/osx/' + projectName + xcodeFolder)),
       icons : [
         { name : 'icon-16x16.png',    size : 16  },
@@ -107,7 +107,7 @@ var getPlatforms = function (projectName) {
   if (settings.PLATFORMS.indexOf('windows')!==-1) {
     platforms.push({
       name : 'windows',
-      isAdded : fs.existsSync('platforms/windows'),
+      isAdded : fs.existsSync(settings.ICONS_PATH || 'platforms/windows'),
       iconsPath : (settings.ICONS_PATH || ('platforms/windows/images/')),
       icons : [
         { name : 'StoreLogo.scale-100.png', size : 50  },
@@ -193,6 +193,14 @@ display.header = function (str) {
  */
 var getProjectName = function () {
   var deferred = Q.defer();
+
+  if (settings.ICONS_PATH ||
+    (settings.PLATFORMS.indexOf('ios') === -1 && settings.PLATFORMS.indexOf('osx') === -1)) {
+    // we don't need the config file / project name if we have a path or are not outputting ios or osx icons.
+    deferred.resolve();
+    return deferred.promise;
+  }
+
   var parser = new xml2js.Parser();
   fs.readFile(settings.CONFIG_FILE, function (err, data) {
     if (err) {
