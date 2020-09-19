@@ -7,6 +7,8 @@ var _      = require('underscore');
 var Q      = require('q');
 var argv   = require('minimist')(process.argv.slice(2));
 
+var sourceIconSizes = {};
+
 /**
  * @var {Object} settings - names of the config file and of the icon image
  */
@@ -233,6 +235,15 @@ var generateIcon = function (platform, icon) {
     fs.mkdirsSync(dst);
   }
 
+  // There is some kind of issue in imagemagick where
+  // resizing to same size is making the png 10x larger in byte size.
+  if (icon.size === platform.iconSize) {
+    fs.copySync(srcPath, dstPath);
+    deferred.resolve();
+    display.success(icon.name + ' copied');
+    return deferred.promise;
+  }
+
   ig.resize({
     srcPath: srcPath,
     dstPath: dstPath,
@@ -389,10 +400,10 @@ var configFileExists = function () {
 };
 
 /**
- * Identify which icon will be used for a platform
- * UPDATES the platform object with the iconFile property
+ * Identify which icon will be used for a platform and get its size
+ * UPDATES the platform object with the iconFile and iconSize properties
  *
- * @return {Promise} always resolves
+ * @return {Promise} resolves if no error reading it
  */
 var identifyPlatformIcon = function (platform) {
   platform.iconFile = settings.ICON_FILE;
@@ -401,7 +412,22 @@ var identifyPlatformIcon = function (platform) {
     platform.iconFile = platformPath;
   }
   var deferred = Q.defer();
-  deferred.resolve();
+  if (sourceIconSizes[platform.iconFile]) {
+    platform.iconSize = sourceIconSizes[platform.iconFile];
+    deferred.resolve();
+    return deferred.promise;
+  }
+  ig.identify(platform.iconFile, function (err, info) {
+    if (err) {
+      display.error('cannot determine size of' + platform.iconFile + ' - ' + err);
+      deferred.reject();
+    } else {
+      display.success(platform.iconFile + ' size: ' + info.width + 'x' + info.height);
+      platform.iconSize = info.width;
+      sourceIconSizes[platform.iconFile] = info.width; // cache it
+      deferred.resolve();
+    }
+  });
   return deferred.promise;
 };
 
