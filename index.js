@@ -219,7 +219,7 @@ var getProjectName = function () {
 var generateIcon = function (platform, icon) {
   var deferred = Q.defer();
   var srcPath = platform.iconFile;
-  var dstPath = platform.iconsPath + icon.name;
+  var dstPath = path.resolve(platform.iconsPath, icon.name);
   var dst = path.dirname(dstPath);
   if (!fs.existsSync(dst)) {
     fs.mkdirsSync(dst);
